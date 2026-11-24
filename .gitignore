@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.streamlit/secrets.toml
+
+# Never commit keys or tokens
+*Token*.txt
+*token*.txt
+*API Key*
+.env
