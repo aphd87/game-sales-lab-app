@@ -39,3 +39,19 @@ Still to write (same patterns as `aphd87/box-office-lab-app/app.py`):
 - Sidebar menu and glossary; "Go deeper" and "Build your pitch" dividers.
 - Then run `streamlit run app.py` headless, check every section, and add `requirements.txt`
   (streamlit, pandas, numpy, altair).
+
+## Also needed (added after review)
+- **Per chart notes.** Which README assumptions to repeat under each chart:
+  Market Size: 1, 2, 3, 6 (estimates, boxed retail only, ends 2018, units not revenue).
+  Who's Winning and Publisher Playbooks: 2, 9 (digital heavy publishers undercounted; publisher grouping).
+  Franchise Fatigue: 11 (title based franchise detection is approximate); follow ups start from proven demand.
+  Platforms & Calendar: 5, 8 (per platform counting; dated games only for months).
+  Regional Taste: 2, 10 (retail only; genre grouping).
+  Critics & Sales: 12 (critic subset is mostly larger releases).
+  Pitch a Game and Predict the Sales: 13, 14, and descriptive, not causal.
+  Game Database: 4 (merged from two scrapes; the 2016 rows stop at 2016 sales).
+- **Color check.** The Microsoft green (#1b7a4b) is new and wasn't in the Box Office Lab's validated set. Check it
+  against the other publisher colors for color vision deficiency.
+- **Deploy.** Streamlit Cloud: point it at `app.py`; set `APP_PASSWORD` in Secrets if the class should log in.
+  `data/` ships in the repo, so the Hugging Face download in the Box Office Lab isn't needed (02 has no HF code).
+- **Clean up.** Delete `wip/` once `app.py` is assembled and runs; update the README's file list if anything changes.
