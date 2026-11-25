@@ -80,7 +80,8 @@ PUB_COLOR = {"Nintendo": "#c2185b", "Electronic Arts": "#e5631f", "Activision": 
              "Ubisoft": "#7a5216", "Take-Two": "#d9a900", "Microsoft": "#0f6e5e", "Sega": "#ffffff"}
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 HIT_UNITS = 1.0           # million units = a hit
-YEAR_MIN, YEAR_MAX = 1980, 2018
+YEAR_MIN, YEAR_MAX = 1980, 2018   # placeholders; reset from the data right after it loads
+MODEL_FROM = 2000                 # build_data.py fits models and the pitch grid on releases MODEL_FROM..YEAR_MAX
 
 
 def pub_text(p):
@@ -410,6 +411,9 @@ def load():
 
 
 GAMES, MODELS, PITCH, PITCH_PLATFORMS = load()
+# Every year label on the page follows the data, so extending the data needs no text edits
+YEAR_MIN, YEAR_MAX = int(GAMES["year"].min()), int(GAMES["year"].max())
+YY = f"{YEAR_MAX % 100:02d}"
 PLATFORM_NAME = dict(zip(GAMES["platform"], GAMES["platform_name"]))
 GENRES = GENRE_ORDER + ["Other"]
 PUBS = PUB_ORDER + ["Other"]
@@ -458,7 +462,7 @@ NOTE = {   # the README's assumptions, in one sentence each, repeated under the 
     1: "VGChartz estimates, not reported sales.",
     2: "Mostly boxed retail: digital sales are largely missing, so recent years, PC and digital-heavy publishers are "
        "undercounted.",
-    3: "Coverage ends in 2018.",
+    3: f"Coverage ends in {YEAR_MAX}.",
     4: "Merged from two VGChartz scrapes; about 1,700 games (mostly Nintendo's own) come from the 2016 file and their "
        "sales stop at 2016 levels.",
     5: "Each platform version counts as its own game.",
@@ -470,8 +474,8 @@ NOTE = {   # the README's assumptions, in one sentence each, repeated under the 
     11: "Franchises are detected from titles, so they are approximate: series whose entries have different names are "
         "missed, and unrelated games that share a name can be lumped together.",
     12: "Critic scores exist for only about 4,600 games, mostly bigger releases, so these results describe that subset.",
-    13: "Models are fit on games released 2000–2018 and graded on games they never saw (5-fold cross-validation).",
-    14: "Pitch predictions assume a 2018 release and describe comparable past games, not a forecast for today's "
+    13: f"Models are fit on games released {MODEL_FROM}–{YEAR_MAX} and graded on games they never saw (5-fold cross-validation).",
+    14: f"Pitch predictions assume a {YEAR_MAX} release and describe comparable past games, not a forecast for today's "
         "market.",
     "assoc": "Descriptive, not causal: publishers choose which games get sequels, big platforms and holiday dates.",
     "release_year": "Units are the lifetime sales of games released in each year, not sales made during that year.",
@@ -550,7 +554,7 @@ st.markdown(f"<p class='lede'>{len(GAMES):,} game releases on {GAMES['platform']
 @st.cache_resource(show_spinner=False)
 def headline_numbers():
     g = GAMES
-    recent = g[g["year"] >= 2000]
+    recent = g[g["year"] >= MODEL_FROM]
     by = recent.groupby(["year", "pub"])["units"].sum().reset_index()
     top5 = by.groupby("year").apply(lambda d: d.nlargest(5, "units")["units"].sum() / d["units"].sum(),
                                     include_groups=False)
@@ -566,17 +570,17 @@ cols[0].metric("Units tracked", units_fmt(H["units"]),
                help=f"Lifetime unit sales of all {H['n']:,} game releases, {YEAR_MIN}–{YEAR_MAX} (VGChartz estimates, "
                     f"mostly boxed retail).")
 cols[1].metric("Million-seller rate", pct(H["hit"]))
-cols[2].metric("Top-5 publisher share, 2000–18", pct(H["top5"]),
+cols[2].metric(f"Top-5 publisher share, {MODEL_FROM}–{YY}", pct(H["top5"]),
                help=f"Average share of each year's units sold by that year's five biggest publisher groups (range "
                     f"{pct(H['top5_lo'])}–{pct(H['top5_hi'])}).")
 cols[3].metric("Units explained by the data", pct(H["r2"]),
-               help=f"Random forest, cross-validated, games released 2000–2018, from genre, platform, publisher, "
+               help=f"Random forest, cross-validated, games released {MODEL_FROM}–{YEAR_MAX}, from genre, platform, publisher, "
                     f"follow-up status and year. Adding the critic score (subset with scores): {pct(H['r2_critic'])}.")
 
 st.info(
     "**What this data can tell you.** These are VGChartz **estimates** of **boxed retail units**, not publisher-"
     "reported sales: digital downloads are largely missing, so recent years, PC games and digital-heavy publishers "
-    "are undercounted, and the data **ends in 2018**. Counts are **units, not revenue**, and a game on three consoles "
+    f"are undercounted, and the data **ends in {YEAR_MAX}**. Counts are **units, not revenue**, and a game on three consoles "
     "counts as three games. Every finding shows what has **gone together** with bigger sales; it does **not** prove "
     "that a choice *causes* them. Publishers pick which games get sequels, big budgets and holiday dates, and those "
     "choices travel together. Full list: the README's *Assumptions and limits*."
@@ -637,10 +641,10 @@ def market_section():
     f["Units"] = f["units"]
     f["Share"] = f["units"] / f.groupby("Year")["units"].transform("sum")
     f = f[f["Year"] >= 1985]
-    late = GAMES[GAMES["year"].between(2014, 2018)].groupby("family")["units"].sum()
+    late = GAMES[GAMES["year"].between(YEAR_MAX - 4, YEAR_MAX)].groupby("family")["units"].sum()
     late = late / late.sum()
     lead = late.idxmax()
-    title = (f"{lead} platforms carried {pct(late[lead])} of software units for 2014–18 releases, "
+    title = (f"{lead} platforms carried {pct(late[lead])} of software units for {YEAR_MAX - 4}–{YY} releases, "
              f"{late.drop(lead).idxmax()} {pct(late.drop(lead).max())}")
 
     def build():
@@ -855,7 +859,7 @@ def fatigue_section():
 
 
 # --- 4. Publisher Playbooks ----------------------------------------------------------------------------------------
-H2H_YEARS = (2000, YEAR_MAX)
+H2H_YEARS = (MODEL_FROM, YEAR_MAX)
 
 
 @st.fragment
@@ -973,7 +977,7 @@ def platforms_section():
     else:
         st.info("Pick at least one platform.")
     note(5, 2, "release_year")
-    st.caption("*Shows each console's first ten years. Late-life years for PS4, Xbox One and Switch are cut off by the 2018 end of the data and depressed "
+    st.caption(f"*Shows each console's first ten years. Late-life years for PS4, Xbox One and Switch are cut off by the {YEAR_MAX} end of the data and depressed "
                "by digital sales.*")
 
     exhibit("When do games launch, and when do they sell?")
@@ -1095,7 +1099,7 @@ def comparables(genre, platform, pub, fu, critic, k=8):
 @st.fragment
 def pitch_section():
     section("Decide", "Pitch a Game",
-            "**How it works:** describe a game you'd greenlight. A random forest fit on games released 2000–2018 "
+            f"**How it works:** describe a game you'd greenlight. A random forest fit on games released {MODEL_FROM}–{YEAR_MAX} "
             "predicts its lifetime units from the choices a publisher makes before launch. Real games missed those "
             "predictions by a known spread, so you get a **range** and a **chance of a million seller**, not a "
             "single number.")

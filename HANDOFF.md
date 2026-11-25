@@ -22,6 +22,14 @@
 - No downloads in the app (2026-11-25): the CSV button is removed and the tables' "Download as CSV" toolbar
   button is hidden with CSS. The data itself is still public in this GitHub repo.
 
+## Year labels follow the data
+- `app.py` sets `YEAR_MIN`/`YEAR_MAX` from `data/games.json` after loading, so every year in titles, captions, metrics
+  and sliders updates when the data grows. `MODEL_FROM` (2000) must match `build_data.py`, which now has `END_YEAR` and
+  `MODEL_FROM` constants at the top.
+- Final pass once new data is in (2019+ or IGDB variables): re-read every insight and caption. Keep VGChartz-based
+  shares (top-5 share, regional and family shares) ending at the last VGChartz year; official publisher numbers for
+  2019+ are hits only and include digital, so they can't extend those charts without changing what they measure.
+
 ## Still to do
 - Next: 2018–2025 extension. Candidate sources are listed in the README (*Sources*). Nintendo IR shows only the top
   10 per platform; Capcom's site blocks automated downloads (save the page by hand); Kaggle needs an API token.

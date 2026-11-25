@@ -105,6 +105,10 @@ SERIES_ALIAS = {"fifa soccer": "fifa", "fifa street": "fifa", "spiderman": "spid
 
 
 # --- Load and merge ----------------------------------------------------------------------------------------------
+# The app reads its year labels from the data, so changing these two needs no app edits (keep app.py MODEL_FROM in step)
+END_YEAR = 2018     # last release year kept (VGChartz stopped tracking software after 2018)
+MODEL_FROM = 2000   # models and pitch grid use releases MODEL_FROM..END_YEAR
+
 new = pd.read_csv(RAW / "vgchartz-2024.csv", dtype={"console": str})
 new = new.rename(columns={"console": "platform", "pal_sales": "eu_sales"})
 new["release"] = pd.to_datetime(new["release_date"], errors="coerce")
@@ -135,7 +139,7 @@ for c in SALES[:-1]:
     g[c] = g[c].fillna(0.0)
 
 g["year"] = pd.to_numeric(g["year"], errors="coerce")
-g = g[g["year"].between(1977, 2018)].copy()   # 2019+ has only a few dozen titles: VGChartz stopped tracking
+g = g[g["year"].between(1977, END_YEAR)].copy()   # 2019+ has only a few dozen titles: VGChartz stopped tracking
 g["year"] = g["year"].astype(int)
 g["month"] = g["release"].dt.month
 g["platform"] = g["platform"].where(g["platform"].isin(PLATFORMS), "Other")
@@ -175,7 +179,7 @@ print(f"games: {len(out):,} rows, {out['total_sales'].sum():,.0f}M units, "
 # --- Models: what predicts a game's lifetime units? ---------------------------------------------------------------
 # Unit = game on one platform, 2000-2018 releases on the main platforms. Outcome = log units (sales are very skewed),
 # reported back in units. Two feature sets: what a publisher knows at greenlight, and the same plus critic score.
-m = g[(g["year"].between(2000, 2018)) & (g["platform"] != "Other")].copy()
+m = g[(g["year"].between(MODEL_FROM, END_YEAR)) & (g["platform"] != "Other")].copy()
 m["log_units"] = np.log(m["total_sales"])
 m["season"] = m["month"].map(lambda x: np.nan if pd.isna(x) else ("Holiday" if x >= 10 else "Other"))
 BASE = ["genre", "platform", "pub_group", "follow_up", "year"]
@@ -234,7 +238,7 @@ for gen in MAIN_GENRES:
         for pub in PUB_ORDER + ["Other"]:
             for fu in [0, 1]:
                 for cs in CRITIC:
-                    rows.append({"genre": gen, "platform": p, "pub_group": pub, "follow_up": fu, "year": 2018,
+                    rows.append({"genre": gen, "platform": p, "pub_group": pub, "follow_up": fu, "year": END_YEAR,
                                  "critic_score": cs})
 grid = pd.DataFrame(rows)
 pitch = []
