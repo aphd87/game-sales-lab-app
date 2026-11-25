@@ -24,7 +24,7 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "enrich"))
-from gamelab_common import PLATFORMS, PUB_ORDER, norm, pub_group  # noqa: E402
+from gamelab_common import PLATFORMS, PUB_ORDER, norm, pub_group, series_of  # noqa: E402
 import igdb_fetch  # noqa: E402
 
 RAW, OUT = HERE / "raw", HERE / "data"
@@ -180,6 +180,59 @@ def steam(look, igdb):
     return s.drop(columns=["price", "positive"])
 
 
+def search_covers():
+    """Covers found by cover_search.py for games the exact-title match missed: {"title|year": cover_id}."""
+    p = RAW / "cover_search.json"
+    if not p.exists():
+        return {}
+    return {k: v["cover_id"] for k, v in json.loads(p.read_text(encoding="utf-8")).items() if v}
+
+
+def fill_covers(d, found, year_col="release_year"):
+    """Fill missing cover_id from the search results (keyed on title and release year)."""
+    def key(r):
+        y = r[year_col]
+        return f"{r['title']}|{None if pd.isna(y) else int(y)}"
+    miss = d["cover_id"].isna()
+    d.loc[miss, "cover_id"] = d[miss].apply(lambda r: found.get(key(r)), axis=1)
+    return d
+
+
+def japan_curves(series_seen):
+    """Week-by-week Japan sales for games that debuted in the chart window, as a share of their latest lifetime
+    total: how front-loaded each game's sales are. One row per game per week since launch (weeks 1-26), plus
+    whether it is a follow-up (its series had an earlier game in VGChartz or earlier in Japan's charts)."""
+    w = pd.read_csv(RAW / "famitsu_weekly.csv")
+    w["post_date"] = pd.to_datetime(w["post_date"])
+    w["release_dt"] = pd.to_datetime(w["release"], errors="coerce")
+    first_post = w["post_date"].min()
+    rows = []
+    for gid, g in w.groupby("game_id"):
+        g = g.sort_values("post_date")
+        rel = g["release_dt"].iloc[0]
+        # Only games released after the chart archive starts and seen in their launch week
+        if pd.isna(rel) or rel < first_post or (g["post_date"].iloc[0] - rel).days > 13 or len(g) < 4:
+            continue
+        life = g["lifetime_units"].max()
+        if life < 20_000:
+            continue
+        g = g.assign(week=((g["post_date"] - rel).dt.days // 7).clip(lower=0) + 1)
+        g = g[g["week"] <= 26].drop_duplicates("week", keep="last")
+        for r in g.itertuples():
+            rows.append({"game_id": int(gid), "title": r.title, "platform": r.platform, "week": int(r.week),
+                         "cum_share": r.lifetime_units / life, "lifetime": int(life),
+                         "release_year": int(rel.year)})
+    c = pd.DataFrame(rows)
+    order = c.drop_duplicates("game_id").sort_values("release_year")
+    seen, kind = set(series_seen), {}
+    for r in order.itertuples():
+        k = series_of(r.title)
+        kind[r.game_id] = "Follow-up" if k in seen else "Original"
+        seen.add(k)
+    c["kind"] = c["game_id"].map(kind)
+    return c
+
+
 def write(name, d):
     d = d.replace({np.nan: None})
     (OUT / name).write_text(json.dumps(d.to_dict("records")), encoding="utf-8")
@@ -189,11 +242,24 @@ def write(name, d):
 def main():
     igdb = load_igdb()
     look = Lookup(igdb)
-    write("attributes.json", attributes())
-    h = hits(look)
+    found = search_covers()
+    at = attributes()
+    if found:   # VGChartz titles without an IGDB match still get a cover if the search found one
+        g = pd.DataFrame(json.loads((OUT / "games.json").read_text(encoding="utf-8")))
+        yr = g.groupby("title")["year"].min()
+        extra = pd.DataFrame({"title": [t for t in yr.index if t not in set(at["title"])]})
+        extra["cover_id"] = extra["title"].map(lambda t: found.get(f"{t}|{int(yr[t])}"))
+        at = pd.concat([at, extra[extra["cover_id"].notna()]], ignore_index=True)
+        at["release_year"] = at["title"].map(yr)
+        at = fill_covers(at, found).drop(columns="release_year")
+    write("attributes.json", at)
+    h = fill_covers(hits(look), found)
+    h["series"] = h["title"].map(series_of)
     write("hits.json", h)
-    jp = japan(look)
+    jp = fill_covers(japan(look), found)
     write("japan.json", jp)
+    games = pd.DataFrame(json.loads((OUT / "games.json").read_text(encoding="utf-8")))
+    write("japan_curves.json", japan_curves(games["series"].dropna().unique()))
     st_ = steam(look, igdb)
     write("steam.json", st_)
     for n, d in [("hits", h), ("japan", jp), ("steam", st_)]:

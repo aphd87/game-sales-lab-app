@@ -6,6 +6,10 @@
   point labeled, an insight under every table, company logos as row labels and in keys, IGDB cover art.
 - 13 sections. New: 7 Critics & Players (adds player ratings, ESRB, multiplayer), 8 Blockbusters Since 2019
   (publisher-reported hits, incl. a 2001–2026 by-year exhibit), 9 Japan Since 2019 (Famitsu), 10 PC & Steam.
+- Up front: an 'About the data' block (every source, its gaps, a worked Call of Duty example: VGChartz 26.7M vs.
+  Activision's 43M for Black Ops III) and what no source counts (revenue, subscriptions, in-game spending).
+- 3.2 shows publisher-reported totals beside VGChartz bars and adds post-2018 series games.
+- 14 Econometrics: franchise decay FE, Japan front-loading, concentration/HHI, hedonic FE, launch month FE.
 - Steam layer: steam_details.py looks up 8,000 more games at SteamSpy's 1/second limit; rerun build_extended.py
   when it finishes, then push.
 

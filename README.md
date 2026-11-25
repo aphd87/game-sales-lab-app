@@ -20,7 +20,9 @@ Lab (`aphd87/box-office-lab-app`) and built on the same code and design system.
     totals removed and spelling variants merged (`raw/famitsu_weekly.csv`, `raw/famitsu_lifetime.csv`).
   - `steamspy_fetch.py`, `steam_details.py`: SteamSpy estimates for Steam games released 2018 on.
   - `fetch_logos.py`: public-domain console-maker and publisher logos from Wikimedia Commons (`data/logos.json`).
-  - `build_extended.py`: joins all of the above into `data/attributes.json`, `hits.json`, `japan.json`, `steam.json`.
+  - `cover_search.py`: IGDB search for covers the exact-title match missed (accepted only when the release year matches).
+  - `build_extended.py`: joins all of the above into `data/attributes.json`, `hits.json`, `japan.json`,
+    `japan_curves.json`, `steam.json`.
 - `data/`: the built data the app reads.
 - `app.py`: the Streamlit app. Run locally: `streamlit run app.py`.
 - `requirements.txt`: what the deployed app needs (build_data.py also needs scikit-learn; run it locally).
@@ -81,6 +83,16 @@ vs. digital, worldwide vs. one country), so they should be kept as separate laye
 ## Data notes
 Units are lifetime sales in millions, as estimated by VGChartz: mostly boxed retail, so digital sales are largely
 missing and years after about 2015 are undercounted. Coverage stops in 2018.
+
+## Econometrics (section 14)
+Five least-squares regressions on log copies sold, computed once when the app starts (numpy; robust HC1 standard
+errors; 95% intervals). All are associations, not causal effects.
+1. Franchise decay: game number within a series, with series fixed effects.
+2. Front-loading in Japan: week-one share of lifetime sales, follow-ups vs. originals, release-year × console fixed
+   effects (Famitsu weekly data; totals stop updating when a game leaves the top 30).
+3. Concentration: share of copies sold by the top 1/5/10/20/50% of games, and the publisher HHI by year.
+4. Hedonic regression: genre, publisher group and sequel status, with year × console fixed effects.
+5. Launch month vs. January (and a holiday indicator), with year × console fixed effects.
 
 ## Assumptions and limits
 Read these before drawing conclusions from the dashboard. Every number describes what has gone together with

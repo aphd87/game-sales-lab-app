@@ -12,12 +12,14 @@ Data (all precomputed into data/, so a click only filters small tables; nothing 
   logos.json       public-domain console-maker and publisher logos (enrich/fetch_logos.py)
 APP_PASSWORD, if set as a secret or environment variable, gates the app; locally there is no password.
 """
+import base64
 import hashlib
 import hmac
 import html
 import inspect
 import json
 import os
+import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -99,9 +101,11 @@ def pub_expr(field):
 NAV = {"Market Size": "market", "Who's Winning": "winning", "Franchise Fatigue": "fatigue",
        "Publisher Playbooks": "publishers", "Platforms & Calendar": "platforms", "Regional Taste": "regions",
        "Critics & Players": "critics", "Blockbusters Since 2019": "hits", "Japan Since 2019": "japan",
-       "PC & Steam": "steam", "Pitch a Game": "pitch", "Predict the Sales": "predict", "Game Database": "database"}
+       "PC & Steam": "steam", "Pitch a Game": "pitch", "Predict the Sales": "predict", "Game Database": "database",
+       "Econometrics": "econometrics"}
 NAV_NUM = {t: str(i) for i, t in enumerate(NAV, start=1)}
-NAV_GROUPS = [("In class", 0, 3), ("Go deeper", 3, 7), ("The digital era", 7, 10), ("Build your pitch", 10, 13)]
+NAV_GROUPS = [("In class", 0, 3), ("Go deeper", 3, 7), ("The digital era", 7, 10), ("Build your pitch", 10, 13),
+              ("Methods", 13, 14)]
 
 # --- Plain-language definitions (table headers and glossary; first match wins, so specific phrases come first) ----
 DEFINE_RULES = [
@@ -247,9 +251,28 @@ def cover_col(label="Cover"):
     return st.column_config.ImageColumn(label, width="small")
 
 
+def title_tile(title):
+    """A navy tile with the game's title, used in tables when no cover art exists (never an empty cell)."""
+    words, lines, cur = str(title).split(), [], ""
+    for w in words:
+        if len(cur) + len(w) + 1 > 11 and cur:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = f"{cur} {w}".strip()
+    lines = (lines + [cur])[:4]
+    tspans = "".join(f"<tspan x='45' dy='{0 if i == 0 else 13}'>{html.escape(t[:13])}</tspan>"
+                     for i, t in enumerate(lines))
+    svg = (f"<svg xmlns='http://www.w3.org/2000/svg' width='90' height='120'><rect width='90' height='120' "
+           f"fill='{NAVY}'/><rect x='6' y='6' width='78' height='3' fill='{BLUE}'/><text x='45' "
+           f"y='{60 - 6 * (len(lines) - 1)}' fill='white' font-family='Georgia,serif' font-size='11' "
+           f"text-anchor='middle'>{tspans}</text></svg>")
+    return "data:image/svg+xml;base64," + base64.b64encode(svg.encode("utf-8")).decode()
+
+
 def with_cover_url(d, col="cover_id"):
-    return d.assign(cover=d[col].map(lambda c: COVER.format(c).replace("t_cover_big", "t_cover_small")
-                                     if isinstance(c, str) and c else None))
+    return d.assign(cover=[COVER.format(c).replace("t_cover_big", "t_cover_small") if isinstance(c, str) and c
+                           else title_tile(t) for c, t in zip(d[col], d["title"])])
 
 
 # --- Shared chart cache -------------------------------------------------------------------------------------------
@@ -403,6 +426,7 @@ def source(src, note_text=None):
 def covers(d, title="title", value=None, n=12):
     """A row of cover-art cards: cover, title and one value line. Missing covers get a plain placeholder."""
     cards = []
+    d = d[d["cover_id"].map(lambda c: isinstance(c, str) and bool(c))] if "cover_id" in d else d.iloc[0:0]
     for r in d.head(n).itertuples():
         cid = getattr(r, "cover_id", None)
         name = html.escape(str(getattr(r, title)))
@@ -458,14 +482,14 @@ def load():
     for c in ["cover_id", "esrb", "multiplayer", "perspective", "user_rating", "user_rating_count"]:
         if c not in games:
             games[c] = np.nan
-    frames = {n: pd.DataFrame(_read(f"{n}.json") or []) for n in ["hits", "japan", "steam"]}
+    frames = {n: pd.DataFrame(_read(f"{n}.json") or []) for n in ["hits", "japan", "steam", "japan_curves"]}
     pitch = _read("pitch.json")
     return (games, _read("models.json"), pd.DataFrame(pitch["rows"]), pitch["platforms"], frames,
             _read("logos.json") or {})
 
 
 GAMES, MODELS, PITCH, PITCH_PLATFORMS, LAYERS, LOGOS = load()
-HITS, JAPAN, STEAM = LAYERS["hits"], LAYERS["japan"], LAYERS["steam"]
+HITS, JAPAN, STEAM, CURVES = LAYERS["hits"], LAYERS["japan"], LAYERS["steam"], LAYERS["japan_curves"]
 # Every year label on the page follows the data, so extending the data needs no text edits
 YEAR_MIN, YEAR_MAX = int(GAMES["year"].min()), int(GAMES["year"].max())
 YY = f"{YEAR_MAX % 100:02d}"
@@ -580,9 +604,19 @@ def pub_lines(d, x, y, pick, tooltip, point_size=45):
         x=x, y=y, color=color, tooltip=tooltip)
     yfield = y.shorthand.split(":")[0]
     last = end_labels(d, x.shorthand.split(":")[0], yfield, "Publisher")
-    last["Label"] = last["Publisher"] + "  " + last[yfield].map(lambda v: f"{v * 100:.0f}%")
-    labels = alt.Chart(last).mark_text(align="left", dx=8, fontSize=11, fontWeight=600,
-                                       color=pub_expr("Publisher")).encode(x=x, y=alt.Y("LabelY:Q"), text="Label:N")
+    # Each line ends in its company's logo plus its last value (the name stands in where there is no logo)
+    last["url"] = last["Publisher"].map(lambda n: LOGOS.get(n, {}).get("src"))
+    last["Label"] = last[yfield].map(lambda v: f"{v * 100:.0f}%")
+    last.loc[last["url"].isna(), "Label"] = last["Publisher"] + "  " + last["Label"]
+    logos = alt.Chart(last[last["url"].notna()]).mark_image(width=58, height=18, xOffset=38).encode(
+        x=x, y=alt.Y("LabelY:Q"), url="url:N")
+    with_logo = alt.Chart(last[last["url"].notna()]).mark_text(align="left", dx=72, fontSize=11, fontWeight=600,
+                                                              color=pub_expr("Publisher")).encode(
+        x=x, y=alt.Y("LabelY:Q"), text="Label:N")
+    no_logo = alt.Chart(last[last["url"].isna()]).mark_text(align="left", dx=8, fontSize=11, fontWeight=600,
+                                                            color=pub_expr("Publisher")).encode(
+        x=x, y=alt.Y("LabelY:Q"), text="Label:N")
+    labels = logos + with_logo + no_logo
     return alt.layer(halo.mark_line(color=KEYLINE, strokeWidth=4.2),
                      halo.mark_circle(color=KEYLINE, size=point_size + 40, opacity=1), main, labels)
 
@@ -595,8 +629,8 @@ def logo_rows(field, order, width=74, height=22, offset=-48):
     y = alt.Y(f"{field}:N", sort=order, title=None)
     imgs = alt.Chart(d[d["url"].notna()]).mark_image(width=width, height=height).encode(
         y=y, x=alt.value(offset), url="url:N")
-    names = alt.Chart(d[d["url"].isna()]).mark_text(fontSize=11, fontWeight=600, color=INK).encode(
-        y=y, x=alt.value(offset), text=f"{field}:N")
+    names = alt.Chart(d[d["url"].isna()]).mark_text(fontSize=11, fontWeight=600, color=INK, align="right").encode(
+        y=y, x=alt.value(-8), text=f"{field}:N")
     return imgs + names
 
 
@@ -644,11 +678,12 @@ def heatmap(d, x, y, x_order, y_order, legend_title, fmt_str, y_color=None, coun
     return layers.properties(height=(38 if logos else 34) * len(y_order) + 24)
 
 
-def hbar(d, cat, val, fmt, title, color=NAVY, highlight=None, tooltip=None, sort=None, height_per=26):
-    """Horizontal bars with the value printed at the end; `highlight` names categories drawn in blue."""
+def hbar(d, cat, val, fmt, title, color=NAVY, highlight=None, tooltip=None, sort=None, height_per=26, logos=False):
+    """Horizontal bars with the value printed at the end; `highlight` names categories drawn in blue. logos=True
+    shows company logos as the row labels where a logo exists (names otherwise)."""
     order = sort or list(d.sort_values(val, ascending=False)[cat])
-    base = alt.Chart(d).encode(y=alt.Y(f"{cat}:N", sort=order, title=None, axis=alt.Axis(labelColor=INK,
-                                                                                         labelLimit=220)))
+    ax = alt.Axis(labels=False, domain=False) if logos else alt.Axis(labelColor=INK, labelLimit=220)
+    base = alt.Chart(d).encode(y=alt.Y(f"{cat}:N", sort=order, title=None, axis=ax))
     col = (alt.condition(alt.FieldOneOfPredicate(field=cat, oneOf=list(highlight)), alt.value(BLUE), alt.value(color))
            if highlight else alt.value(color))
     bars = base.mark_bar(height={"band": 0.72}).encode(
@@ -656,7 +691,8 @@ def hbar(d, cat, val, fmt, title, color=NAVY, highlight=None, tooltip=None, sort
         tooltip=tooltip or [alt.Tooltip(f"{cat}:N"), alt.Tooltip(f"{val}:Q", format=fmt)])
     lab = base.mark_text(align="left", dx=4, fontSize=11, color=INK).encode(x=f"{val}:Q",
                                                                             text=alt.Text(f"{val}:Q", format=fmt))
-    return (bars + lab).properties(height=max(140, height_per * len(order)))
+    layers = bars + lab + logo_rows(cat, order) if logos else bars + lab
+    return layers.properties(height=max(140, (34 if logos else height_per) * len(order)))
 
 
 def logo_key(names, colors, text_color=None):
@@ -714,14 +750,65 @@ kpis([
      f"A model using only pre-launch choices predicts about {H['r2'] * 100:.0f}% of the differences in sales "
      f"between games. Adding review scores: {H['r2_critic'] * 100:.0f}%."),
 ])
-st.info(
-    "**How to read this lab.** The main data are VGChartz **estimates** of copies sold, mostly **boxed copies in "
-    f"stores**, through **{YEAR_MAX}**: downloads are largely missing, so recent years look smaller than they were. "
-    "The digital-era sections (8–10) add **officially reported** sales of big hits, **Japan's** store charts and "
-    "**PC estimates from Steam** through 2026. These sources measure different things, so each stays in its own "
-    "charts. Every pattern here shows what **went together** with bigger sales, not proof that one thing *causes* "
-    "another. Each exhibit lists its source underneath."
-)
+def about_the_data():
+    """Up-front limitations: what each source counts, what it misses, and a worked example of the gap."""
+    vg = GAMES[GAMES["title"].str.lower() == "call of duty: black ops iii"]["units"].sum()
+    rep = HITS[(HITS["platform"] == "Multi") & (HITS["title"].str.lower() == "call of duty: black ops iii")]
+    rep_v = float(rep["units_m"].iloc[0]) if len(rep) else np.nan
+    st.markdown("<div class='kicker' style='margin-top:1.2rem'>Read this first</div>", unsafe_allow_html=True)
+    st.subheader("About the data", anchor=False)
+    st.markdown(
+        "No public source counts every copy of every game. This lab combines four sources, each with real gaps. "
+        "**Use the numbers to compare games, publishers and years within one source, not as exact sales.**")
+    if vg and pd.notna(rep_v):
+        takeaway(f"<b>How big the gaps can be:</b> VGChartz estimates <i>Call of Duty: Black Ops III</i> (2015) at "
+                 f"<b>{units_fmt(vg)}</b> copies across all platforms. Activision told a court in December 2024 that "
+                 f"it sold <b>{units_fmt(rep_v)}</b>. Most of the difference is downloads, which VGChartz barely "
+                 f"sees. The newer the game and the bigger its download share, the larger the gap.")
+    src = pd.DataFrame([
+        {"Source": "VGChartz estimates (sections 1–7, 11–14)", "Years": f"{YEAR_MIN}–{YEAR_MAX}",
+         "What it counts": "Estimated copies sold, by game, console and region",
+         "Main gaps": "Third-party estimates, not company figures. Mostly boxed copies in stores: downloads are "
+                      "largely missing, so games after about 2010, PC games and download-heavy publishers are "
+                      "understated, sometimes by half. Ends in 2018."},
+        {"Source": "Publisher-reported hits (section 8)", "Years": "2001–2026",
+         "What it counts": "Lifetime copies the publisher announced, downloads included",
+         "Main gaps": "Only games a publisher chose to announce, mostly hits above 1 million. Nintendo reports "
+                      "almost everything; Sony, Microsoft and many others report little. Figures are 'as of' "
+                      "different dates and mix copies sold with copies shipped to stores."},
+        {"Source": "Famitsu, Japan (section 9)", "Years": "2019–2026",
+         "What it counts": "Boxed copies sold in Japanese stores, weekly top 30",
+         "Main gaps": "Japan only, boxed copies only (no downloads). Games that never reached the top 30 are "
+                      "missing. A few weekly figures had typos, which were removed."},
+        {"Source": "SteamSpy, PC (section 10)", "Years": "2018–2026",
+         "What it counts": "Estimated owners on Steam (a range) and player review counts",
+         "Main gaps": "Rough estimates: owner ranges are wide and inflated by free weekends and giveaways. Steam only "
+                      "(not Epic, Xbox PC or others). Covers games with a following, not every release."},
+        {"Source": "IGDB (covers, ratings, game modes)", "Years": "All",
+         "What it counts": "Cover art, age ratings, multiplayer modes, player ratings",
+         "Main gaps": "Matched to the sales data by title: 77% of VGChartz titles (89% of copies) matched. Player "
+                      "ratings come from IGDB users, often years after release."},
+    ])
+    show_table(src, column_config={
+        "Source": st.column_config.TextColumn("Source", width="medium"),
+        "Years": st.column_config.TextColumn("Years", width="small"),
+        "What it counts": st.column_config.TextColumn("What it counts", width="medium"),
+        "Main gaps": st.column_config.TextColumn("Main gaps", width="large")}, row_height=90)
+    st.markdown(
+        "**What none of these sources count:** money. Copies are not revenue: a $20 game and a $70 game count the "
+        "same, and none of the sources include **subscriptions** (Game Pass, PlayStation Plus), **in-game "
+        "spending** (skins, battle passes, loot boxes) or **free-to-play** revenue, which today make up much of the "
+        "industry's income. A game on three consoles counts as three games in the VGChartz data.\n\n"
+        "**Why the sources stay apart:** they measure different things, so no chart adds one source to another. "
+        "Each exhibit names its source underneath.\n\n"
+        "**What the patterns mean:** every chart shows what **went together** with bigger sales. None of them "
+        "proves that a choice *causes* higher sales: publishers give sequels, big budgets and holiday dates to the "
+        "games they already expect to sell.")
+    st.caption("Full details, every source link and the step-by-step build are in the project README on GitHub.")
+
+
+about_the_data()
+
 c1, c2 = st.columns(2)
 c1.markdown("**The problem**  \n"
             "A big game takes years and tens of millions of dollars to make, and most games never sell a million "
@@ -859,8 +946,8 @@ def winning_section():
         pub_key()
 
         def build():
-            x = alt.X("Year:Q", title=None, axis=alt.Axis(format="d", tickMinStep=1),
-                      scale=alt.Scale(domain=[years[0], years[1] + 5], nice=False))   # room for the end labels
+            x = alt.X("Year:Q", title=None, axis=alt.Axis(format="d", values=list(range(years[0], years[1] + 1, 2))),
+                      scale=alt.Scale(domain=[years[0], years[1] + 6], nice=False))   # room for the end labels
             y = alt.Y("Share:Q", title="Share of copies sold", axis=alt.Axis(format="%"))
             tip = [alt.Tooltip("Year:Q", format="d"), "Publisher:N", alt.Tooltip("Share:Q", format=".1%"),
                    alt.Tooltip("Units:Q", format=",.1f", title="Copies (M)")]
@@ -944,6 +1031,16 @@ def franchise_titles():
     return t
 
 
+ROMAN_NUM = {"ii": "2", "iii": "3", "iiii": "4", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8"}
+
+
+def title_key(t):
+    """Match key for one game written two ways: lowercase, no punctuation, Roman numerals as digits
+    ('Black Ops III' = 'Black Ops 3')."""
+    words = re.sub(r"[^a-z0-9 ]+", " ", str(t).lower()).split()
+    return " ".join(ROMAN_NUM.get(w, w) for w in words)
+
+
 @st.fragment
 def fatigue_section():
     section("Franchises", "Franchise Fatigue",
@@ -1000,36 +1097,68 @@ def fatigue_section():
     pick = st.selectbox("Pick a series (3+ games)", series, index=default, format_func=lambda s: name[s],
                         key="fatigue_series")
     d = t[t["series"] == pick].sort_values(["Entry", "Year"]).copy()
-    d["Game"] = d["title"] + " (" + d["Year"].astype(str) + ")"
-    best = d.loc[d["Units"].idxmax()]
-    title = (f"{best['title']} is the best seller of the {name[pick]} series: {units_fmt(best['Units'])} copies"
-             + (f", {best['Ratio']:.1f}× the first game" if pd.notna(best["Ratio"]) and best["Entry"] > d["Entry"].min()
-                else ""))
+    # Publisher-reported totals (all platforms, downloads included) where they exist, and series games released
+    # after 2018 that only the reported figures cover
+    rep = HITS[(HITS["platform"] == "Multi") & (HITS.get("series") == pick)] if "series" in HITS else HITS.iloc[0:0]
+    rep = rep.assign(key=rep["title"].map(title_key)).drop_duplicates("key")
+    d["Reported"] = d["title"].map(title_key).map(dict(zip(rep["key"], rep["units_m"])))
+    extra = rep[~rep["key"].isin(d["title"].map(title_key))]
+    if len(extra):
+        d = pd.concat([d, pd.DataFrame({"title": extra["title"], "Year": extra["release_year"].astype(int),
+                                        "Units": np.nan, "Reported": extra["units_m"], "Entry": 999,
+                                        "cover_id": extra["cover_id"], "Publisher": extra["pub"]})],
+                      ignore_index=True)
+    d = d.sort_values(["Year", "Entry"]).reset_index(drop=True)
+    d["Game"] = d["title"] + " (" + d["Year"].astype(int).astype(str) + ")"
+    d["Best"] = d["Reported"].fillna(d["Units"])
+    best = d.loc[d["Best"].idxmax()]
+    best_src = "publisher-reported" if pd.notna(best["Reported"]) else "VGChartz estimate"
+    vg_best = d.loc[d["Units"].idxmax()] if d["Units"].notna().any() else best
+    title = f"{best['title']} is the best seller of the {name[pick]} series: {units_fmt(best['Best'])} copies ({best_src})"
+    if best_src == "publisher-reported" and vg_best["title"] != best["title"]:
+        title += f"; VGChartz alone would have picked {vg_best['title']}"
     names = list(d["Game"])
     # The series' best seller, cover first, right under the picker
     hero, info = st.columns([1, 4])
     with hero:
         covers(pd.DataFrame([best]), "title", None, n=1)
     with info:
-        kpis([("Best seller", best["title"], f"{units_fmt(best['Units'])} copies, released {int(best['Year'])}."),
+        kpis([("Best seller", best["title"], f"{units_fmt(best['Best'])} copies ({best_src}), released "
+                                             f"{int(best['Year'])}."),
               ("Games in the series", f"{len(d)}", f"From {int(d['Year'].min())} to {int(d['Year'].max())}."),
-              ("Series total", units_fmt(d["Units"].sum()), "Copies sold by every game in the series."),
-              ("First game", units_fmt(d.iloc[0]["Units"]), f"{d.iloc[0]['title']} ({int(d.iloc[0]['Year'])}).")])
+              ("Series total (VGChartz)", units_fmt(d["Units"].sum()),
+               f"Copies of the games released through {YEAR_MAX}, as VGChartz estimates them."),
+              ("Publisher-reported games", f"{int(d['Reported'].notna().sum())}",
+               "Games in this series with an official total (the blue markers).")])
 
     def build():
         base = alt.Chart(d).encode(x=alt.X("Game:N", sort=names, title=None,
                                            axis=alt.Axis(labelAngle=-40, labelLimit=180)))
+        tip = ["title:N", alt.Tooltip("Year:Q", format="d"), "Publisher:N",
+               alt.Tooltip("Units:Q", format=",.2f", title="VGChartz estimate (M)"),
+               alt.Tooltip("Reported:Q", format=",.1f", title="Publisher-reported (M)")]
         bars = base.mark_bar(width={"band": 0.7}).encode(
-            y=alt.Y("Units:Q", title="Copies sold, all consoles (millions)"),
+            y=alt.Y("Units:Q", title="Copies sold, all platforms (millions)"),
             color=alt.condition(f"datum.Entry == {int(d['Entry'].min())}", alt.value(SILVER), alt.value(NAVY)),
-            tooltip=["title:N", alt.Tooltip("Year:Q", format="d"), "Publisher:N", "Platforms:N",
-                     alt.Tooltip("Units:Q", format=",.2f", title="Copies (M)"),
-                     alt.Tooltip("Critic:Q", format=".1f", title="Critic score")])
+            tooltip=tip)
         lab = base.mark_text(dy=-7, fontSize=10, color=INK).encode(y="Units:Q", text=alt.Text("Units:Q", format=".1f"))
-        return (bars + lab).properties(height=320)
-    show_chart(build, title, f"{name[pick]}: copies sold of each game, in release order (gray = first game)")
-    covers(d.sort_values("Units", ascending=False), "title", lambda r: f"{units_fmt(r.Units)} · {r.Year}", n=8)
-    note(11, 2)
+        r = base.transform_filter("isValid(datum.Reported)")
+        dots = r.mark_point(shape="diamond", size=110, filled=True, color=BLUE, stroke="white", strokeWidth=1).encode(
+            y="Reported:Q", tooltip=tip)
+        rlab = r.mark_text(dy=-11, fontSize=10, fontWeight=700, color=BLUE).encode(
+            y="Reported:Q", text=alt.Text("Reported:Q", format=".0f"))
+        return (bars + lab + dots + rlab).properties(height=340)
+    show_chart(build, title, f"{name[pick]}: navy bars = VGChartz estimate (mostly boxed copies, through {YEAR_MAX}); "
+                             f"blue diamonds = publisher-reported total, downloads included; gray = first game")
+    covers(d.sort_values("Best", ascending=False), "title", lambda r: f"{units_fmt(r.Best)} · {int(r.Year)}", n=8)
+    gap = d.dropna(subset=["Units", "Reported"])
+    if len(gap):
+        ratio = (gap["Reported"] / gap["Units"]).median()
+        takeaway(f"<b>Insight:</b> where both numbers exist, the publisher's own total is typically "
+                 f"{ratio:.1f}× the VGChartz estimate for this series: downloads that store tracking misses. "
+                 f"Compare games within one source, not across the two.")
+    source(SRC_VGC + "; " + SRC_HITS.split(";")[0],
+           NOTE[11] + " " + NOTE[2] + " Publisher totals are worldwide, all platforms, as last announced.")
 
 
 # --- 4. Publisher Playbooks ----------------------------------------------------------------------------------------
@@ -1363,7 +1492,8 @@ def hits_section():
     exhibit_head(f"{pubs.index[0]} sold {pct(pubs.iloc[0] / pubs.sum())} of the reported hit sales since 2019",
                  "Reported copies sold of hit games released 2019 or later, by publisher (millions)")
     d = pubs.head(12).rename_axis("Publisher").reset_index(name="Units")
-    show_chart(lambda: hbar(d, "Publisher", "Units", ",.0f", "Copies sold (millions)", highlight=[d.iloc[0]["Publisher"]]))
+    show_chart(lambda: hbar(d, "Publisher", "Units", ",.0f", "Copies sold (millions)", highlight=[d.iloc[0]["Publisher"]],
+                            logos=True))
     source(SRC_HITS, "Only games a publisher announced figures for are counted, mostly hits above 1 million, so "
                      "publishers that rarely report numbers (and smaller games) are missing. Figures are 'as of' "
                      "different dates and mix copies sold with copies shipped to stores.")
@@ -1453,7 +1583,7 @@ def japan_section():
     exhibit_head(f"{d.iloc[0]['Publisher']} sold {pct(pubs.iloc[0] / j['units_m'].sum())} of boxed games in Japan "
                  f"since 2019", "Boxed copies sold in Japan of games released 2019 or later, by publisher (millions)")
     show_chart(lambda: hbar(d, "Publisher", "Units", ",.1f", "Copies sold in Japan (millions)",
-                            highlight=[d.iloc[0]["Publisher"]]))
+                            highlight=[d.iloc[0]["Publisher"]], logos=True))
     source(SRC_JP)
 
     exhibit("Japan's 12 best-selling games since 2019", "Boxed copies sold in Japan")
@@ -1773,6 +1903,245 @@ def database_section():
     source(SRC_VGC + "; covers, age ratings and player ratings from IGDB", NOTE[4] + " " + NOTE[1])
 
 
+# --- 14. Econometrics -------------------------------------------------------------------------------------------------
+# Five standard analyses on the same data, each a plain least-squares regression (numpy, computed once per server).
+# Standard errors are heteroskedasticity-robust (HC1); 95% intervals = estimate ± 1.96 SE. All are associations.
+def ols(y, X):
+    """OLS with HC1 robust standard errors. X is a DataFrame (include a constant if wanted)."""
+    Xv, yv = X.to_numpy(dtype=float), np.asarray(y, dtype=float)
+    beta, *_ = np.linalg.lstsq(Xv, yv, rcond=None)
+    e = yv - Xv @ beta
+    n, k = Xv.shape
+    inv = np.linalg.pinv(Xv.T @ Xv)
+    cov = inv @ (Xv.T * e ** 2) @ Xv @ inv * n / max(n - k, 1)
+    r2 = 1 - (e ** 2).sum() / ((yv - yv.mean()) ** 2).sum()
+    return pd.DataFrame({"term": X.columns, "b": beta, "se": np.sqrt(np.clip(np.diag(cov), 0, None))}), r2, n
+
+
+def within(df, cols, group):
+    """Demean columns within groups (fixed effects by the within transformation)."""
+    return df[cols] - df.groupby(group)[cols].transform("mean")
+
+
+def pct_ci(r):
+    """Coefficient on log sales -> % difference with a 95% interval."""
+    return r.assign(Effect=np.exp(r["b"]) - 1, Lo=np.exp(r["b"] - 1.96 * r["se"]) - 1,
+                    Hi=np.exp(r["b"] + 1.96 * r["se"]) - 1)
+
+
+def ci_dots(d, cat, order, xtitle, fmt=".0%", ref_label=None):
+    """Horizontal estimate-and-interval chart with the estimate printed beside each dot."""
+    def build():
+        base = alt.Chart(d).encode(y=alt.Y(f"{cat}:N", sort=order, title=None, axis=alt.Axis(labelColor=INK,
+                                                                                             labelLimit=240)))
+        rule = base.mark_rule(color=SLATE, strokeWidth=1.6).encode(x=alt.X("Lo:Q", title=xtitle,
+                                                                            axis=alt.Axis(format=fmt)), x2="Hi:Q")
+        dot = base.mark_circle(size=80, opacity=1).encode(
+            x="Effect:Q", color=alt.condition("datum.Effect >= 0", alt.value(BLUE), alt.value(NAVY)),
+            tooltip=[f"{cat}:N", alt.Tooltip("Effect:Q", format=fmt, title="Estimate"),
+                     alt.Tooltip("Lo:Q", format=fmt, title="95% low"), alt.Tooltip("Hi:Q", format=fmt, title="95% high")])
+        lab = base.mark_text(align="left", dx=8, dy=-8, fontSize=10, color=INK).encode(
+            x="Effect:Q", text=alt.Text("Effect:Q", format="+" + fmt))
+        zero = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(color=RULE, strokeDash=[3, 3]).encode(x="x:Q")
+        return (zero + rule + dot + lab).properties(height=max(160, 26 * len(order)))
+    return build
+
+
+@st.cache_resource(show_spinner=False)
+def econ_results():
+    out = {}
+    # 1. Franchise decay with series fixed effects
+    t = franchise_titles()
+    t = t[t["First"] >= FIRST_MIN].copy()
+    t["ly"] = np.log(t["Units"].clip(lower=0.005))
+    t["n"] = t["Entry"].clip(upper=8)
+    dums = pd.get_dummies(t["n"].astype(int), prefix="g", dtype=float).drop(columns="g_1", errors="ignore")
+    X = within(pd.concat([t[["series"]], dums], axis=1), list(dums.columns), "series")
+    y = t["ly"] - t.groupby("series")["ly"].transform("mean")
+    r, r2, n = ols(y, X)
+    r = pct_ci(r)
+    r["Game"] = r["term"].str.replace("g_", "Game ").str.replace("Game 8", "Game 8+")
+    out["decay"] = (r, n, t["series"].nunique())
+    # 3. Concentration: Lorenz-style shares and publisher HHI by year
+    g = GAMES[GAMES["year"] >= MODEL_FROM]
+    srt = g["units"].sort_values(ascending=False).to_numpy()
+    cum = srt.cumsum() / srt.sum()
+    pts = [0.01, 0.05, 0.10, 0.20, 0.50]
+    lor = pd.DataFrame({"Top": [f"Top {int(p * 100)}%" for p in pts],
+                        "Share": [cum[max(int(len(srt) * p) - 1, 0)] for p in pts], "p": pts})
+    curve = pd.DataFrame({"Games": np.linspace(0, 1, 101)})
+    curve["Copies"] = [0.0] + [cum[max(int(len(srt) * q) - 1, 0)] for q in curve["Games"][1:]]
+    sh = g.groupby(["year", "pub"])["units"].sum()
+    sh = sh / sh.groupby(level=0).transform("sum")
+    hhi = (sh ** 2).groupby(level=0).sum().mul(10000).rename("HHI").reset_index().rename(columns={"year": "Year"})
+    out["conc"] = (lor, curve, hhi)
+    # 4. Hedonic regression with year and console fixed effects (releases MODEL_FROM..YEAR_MAX, main platforms)
+    h = g[g["platform"] != "Other"].copy()
+    h["ly"] = np.log(h["units"].clip(lower=0.005))
+    gen = pd.get_dummies(h["genre"], dtype=float).drop(columns="Action")
+    pub = pd.get_dummies(h["pub_group"], dtype=float).drop(columns="Other")
+    Xh = pd.concat([gen.add_prefix("Genre: "), pub.add_prefix("Publisher: "),
+                    h[["follow_up"]].rename(columns={"follow_up": "Sequel or follow-up"}).astype(float),
+                    h[["year", "platform"]]], axis=1)
+    keys = h["year"].astype(str) + "|" + h["platform"]
+    cols = [c for c in Xh.columns if c not in ("year", "platform")]
+    Xw = within(Xh.assign(k=keys), cols, "k")
+    yw = h["ly"] - h.groupby(keys)["ly"].transform("mean")
+    r, r2, n = ols(yw, Xw)
+    out["hedonic"] = (pct_ci(r), r2, n)
+    # 5. Launch month vs. January, within the same year and console
+    m = GAMES[GAMES["month"].notna() & (GAMES["year"] >= MODEL_FROM)].copy()
+    m["ly"] = np.log(m["units"].clip(lower=0.005))
+    mon = pd.get_dummies(m["month"].astype(int).map(lambda k: MONTHS[k - 1]), dtype=float).drop(columns="Jan")
+    mon = mon[[c for c in MONTHS if c in mon]]
+    keys = m["year"].astype(str) + "|" + m["platform"]
+    Xm = within(pd.concat([mon, keys.rename("k")], axis=1), list(mon.columns), "k")
+    ym = m["ly"] - m.groupby(keys)["ly"].transform("mean")
+    r, r2, n = ols(ym, Xm)
+    r = pct_ci(r)
+    m["holiday"] = (m["month"] >= 10).astype(float)
+    Xq = within(pd.concat([m[["holiday"]], keys.rename("k")], axis=1), ["holiday"], "k")
+    rq, _, _ = ols(ym, Xq)
+    out["months"] = (r, pct_ci(rq).iloc[0], n)
+    # 2. Front-loading in Japan's weekly charts
+    c = CURVES.copy()
+    if len(c):
+        w1 = c[c["week"] == 1].set_index("game_id")["cum_share"]
+        games = c.drop_duplicates("game_id").set_index("game_id")
+        games["w1"] = w1
+        games = games.dropna(subset=["w1"])
+        games["fu"] = (games["kind"] == "Follow-up").astype(float)
+        gk = games["release_year"].astype(str) + "|" + games["platform"]
+        Xf = within(pd.concat([games[["fu"]], gk.rename("k")], axis=1), ["fu"], "k")
+        yf = games["w1"] - games.groupby(gk)["w1"].transform("mean")
+        rf_, _, nf = ols(yf, Xf)
+        avg = c[c["week"].isin([1, 2, 3, 4, 6, 8, 12, 16, 20, 26])].groupby(["kind", "week"])["cum_share"].mean()
+        out["japan"] = (games, rf_.iloc[0], nf, avg.reset_index())
+    return out
+
+
+def econ_section():
+    section("Methods", "Econometrics",
+            "Five standard analyses that go one step past the charts above. Each is an ordinary least-squares "
+            "regression on log sales, so results read as **% differences**. Bars show 95% intervals: if an interval "
+            "crosses zero, the data can't tell the difference from no difference. All are **associations**: they "
+            "compare like with like more carefully, but they do not prove that a choice causes sales.")
+    E = econ_results()
+
+    # 14.1 Franchise decay
+    r, n, ns = E["decay"]
+    g2 = r[r["Game"] == "Game 2"].iloc[0]
+    title = (f"Within the same series, the second game sells {abs(g2['Effect']) * 100:.0f}% "
+             f"{'less' if g2['Effect'] < 0 else 'more'} than the first, and later games keep sliding")
+    show_chart(ci_dots(r, "Game", list(r["Game"]), "Sales vs. the series' first game"), title,
+               "Franchise decay: each later game's sales vs. the first game of the same series (series fixed effects)")
+    source(SRC_VGC, f"Method: regression of log copies sold on game number with a fixed effect for each series "
+                    f"({ns:,} series, {n:,} games), so each sequel is compared only with its own series and big "
+                    f"series don't drive the result. Reads as: the typical Game 2 sells this % more or less than "
+                    f"Game 1 of the same series. VGChartz undercounts downloads, which grew over time, so later games "
+                    f"are understated and the decay is likely overstated. " + NOTE[11])
+
+    # 14.2 Front-loading in Japan
+    if "japan" in E:
+        games, rf_, nf, avg = E["japan"]
+        med = games.groupby("kind")["w1"].median()
+        kpis([("Week-1 share, follow-ups", pct(med.get("Follow-up")), "Typical share of a sequel's lifetime Japan "
+                                                                      "sales made in its first week."),
+              ("Week-1 share, originals", pct(med.get("Original")), "The same for new games."),
+              ("Difference, like for like", f"{rf_['b'] * 100:+.0f} pts",
+               f"Follow-ups vs. originals released the same year on the same console (95% interval "
+               f"{(rf_['b'] - 1.96 * rf_['se']) * 100:+.0f} to {(rf_['b'] + 1.96 * rf_['se']) * 100:+.0f})."),
+              ("Games analyzed", f"{nf:,}", "Games that debuted in Famitsu's chart from mid-2019 on.")])
+        avg["Label"] = avg["cum_share"].map(lambda v: f"{v:.0%}")
+        lo, hi = rf_["b"] - 1.96 * rf_["se"], rf_["b"] + 1.96 * rf_["se"]
+        verdict = ("Sequels are more front-loaded" if lo > 0 else "Originals are more front-loaded" if hi < 0
+                   else "Sequels and originals are about equally front-loaded")
+        title = (f"{verdict}: typical week-one share {pct(med.get('Follow-up'))} for follow-ups vs. "
+                 f"{pct(med.get('Original'))} for originals in Japan")
+
+        def build():
+            base = alt.Chart(avg).encode(
+                x=alt.X("week:Q", title="Weeks since launch", axis=alt.Axis(values=[1, 4, 8, 12, 16, 20, 26])),
+                y=alt.Y("cum_share:Q", title="Share of lifetime sales made so far", axis=alt.Axis(format="%"),
+                        scale=alt.Scale(domain=[0, 1])),
+                color=alt.Color("kind:N", title=None, scale=alt.Scale(domain=["Follow-up", "Original"],
+                                                                     range=[NAVY, BLUE])))
+            line = base.mark_line(strokeWidth=2.4, point=line_points())
+            lab = base.mark_text(dy=-10, fontSize=10).encode(text="Label:N")
+            return (line + lab).properties(height=300)
+        show_chart(build, title, "Front-loading: average share of a game's lifetime Japan sales reached by each "
+                                 "week after launch")
+        source(SRC_JP, "Method: each game's cumulative sales divided by its latest lifetime total, week by week; the "
+                       "like-for-like difference is a regression of week-1 share on a follow-up flag with "
+                       "release-year × console fixed effects. Boxed copies in Japan only, games that reached the "
+                       "weekly top 30. A game's total stops updating once it drops out of the top 30, so small games look more "
+                       "front-loaded than they are. A front-loaded launch is the games version of a movie's steep "
+                       "week-2 drop.")
+
+    # 14.3 Concentration
+    lor, curve, hhi = E["conc"]
+    top1 = lor.iloc[0]["Share"]
+    title = f"Blockbuster economics: the top 1% of games sold {pct(top1)} of all copies, the top 10% sold {pct(lor.iloc[2]['Share'])}"
+
+    def build():
+        base = alt.Chart(curve).encode(x=alt.X("Games:Q", title="Share of games (best sellers first)",
+                                               axis=alt.Axis(format="%")),
+                                       y=alt.Y("Copies:Q", title="Share of copies sold", axis=alt.Axis(format="%")))
+        line = base.mark_line(color=NAVY, strokeWidth=2.4)
+        eq = alt.Chart(pd.DataFrame({"Games": [0, 1], "Copies": [0, 1]})).mark_line(
+            color=RULE, strokeDash=[4, 3]).encode(x="Games:Q", y="Copies:Q")
+        pts = alt.Chart(lor).encode(x="p:Q", y="Share:Q")
+        dots = pts.mark_circle(color=BLUE, size=70, opacity=1)
+        lab = pts.mark_text(align="left", dx=8, dy=8, fontSize=10, color=INK).encode(
+            text=alt.Text("label:N")).transform_calculate(label="datum.Top + ': ' + format(datum.Share, '.0%')")
+        return (eq + line + dots + lab).properties(height=300)
+    show_chart(build, title, f"Concentration of sales: share of copies sold by the best-selling games, releases "
+                             f"{MODEL_FROM}–{YEAR_MAX} (dashed line = every game sells the same)")
+    hhi["Label"] = hhi["HHI"].map(lambda v: f"{v:,.0f}")
+    title = (f"Publisher concentration (HHI) moved from {hhi.iloc[0]['HHI']:,.0f} to {hhi.iloc[-1]['HHI']:,.0f}: "
+             f"{'a moderately concentrated' if hhi['HHI'].mean() >= 1500 else 'an unconcentrated'} market by the "
+             f"usual antitrust yardstick (under 1,500)")
+
+    def build():
+        base = alt.Chart(hhi).encode(x=year_axis(), y=alt.Y("HHI:Q", title="HHI (0–10,000)"))
+        return (base.mark_line(color=NAVY, strokeWidth=2.4, point=line_points())
+                + base.mark_text(dy=-10, fontSize=10, color=INK).encode(text="Label:N")).properties(height=260)
+    show_chart(build, title, "Herfindahl-Hirschman Index of publisher shares, by release year")
+    source(SRC_VGC, "Method: HHI = the sum of each publisher's squared market share (in %), the standard antitrust "
+                    "measure; under 1,500 is usually called unconcentrated, 1,500–2,500 moderately concentrated. "
+                    "Shares of boxed copies only. " + NOTE[2] + " " + NOTE[9])
+
+    # 14.4 Hedonic regression
+    r, r2, n = E["hedonic"]
+    r["Factor"] = r["term"]
+    order = list(r.sort_values("Effect", ascending=False)["Factor"])
+    best = r.loc[r["Effect"].idxmax()]
+    title = (f"Holding genre, publisher, year and console fixed, {best['Factor'].split(': ')[-1]} goes with the "
+             f"biggest sales premium ({best['Effect']:+.0%})")
+    show_chart(ci_dots(r, "Factor", order, "Sales vs. the reference group"), title,
+               "What goes with sales, all else equal: % difference in copies sold vs. an Action game, an "
+               "'Other' publisher and an original")
+    source(SRC_VGC, f"Method: hedonic regression of log copies sold on genre, publisher group and sequel status, with "
+                    f"a fixed effect for every year × console pair ({n:,} games, {MODEL_FROM}–{YEAR_MAX}; R² within "
+                    f"year-console = {r2:.2f}). Each estimate compares games released the same year on the same "
+                    f"console. " + NOTE["assoc"])
+
+    # 14.5 Launch month
+    r, hol, n = E["months"]
+    r["Month"] = r["term"]
+    title = (f"Within the same year and console, holiday (Oct–Dec) launches sell {hol['Effect']:+.0%} vs. the rest of "
+             f"the year (95% interval {hol['Lo']:+.0%} to {hol['Hi']:+.0%})")
+    show_chart(ci_dots(r, "Month", [c for c in MONTHS if c in set(r["Month"])], "Sales vs. a January launch"),
+               title, "Launch month: % difference in copies sold vs. January, same year and console")
+    source(SRC_VGC, f"Method: regression of log copies sold on launch-month indicators with a fixed effect for every "
+                    f"year × console pair ({n:,} games). The holiday figure comes from the same model with one "
+                    f"October–December indicator. " + NOTE[8] + " " + NOTE["assoc"])
+    takeaway("<b>Insight:</b> these five analyses tighten the patterns from the charts above by comparing like with "
+             "like: sequels against their own series, launches against games from the same year and console. The "
+             "patterns hold up, but none of them can separate the choice from the expectations behind it, so read "
+             "them as evidence for an argument, not as forecasts.")
+
+
 # --- Sidebar: menu + glossary ---------------------------------------------------------------------------------------
 GLOSSARY = {
     "Copies sold (units)": define("units"),
@@ -1828,3 +2197,5 @@ divider("Build your pitch", "Pitch your own game, see how far prediction gets yo
 pitch_section()         # 11
 predict_section()       # 12
 database_section()      # 13
+divider("Methods", "Five econometric analyses that test the patterns above more carefully.")
+econ_section()          # 14
