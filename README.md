@@ -1,5 +1,7 @@
 # Game Sales Lab
 
+Live: https://game-sales-lab.streamlit.app
+
 Classroom dashboard on the video game business, built on VGChartz unit sales. Companion to the Behind the Box Office
 Lab (`aphd87/box-office-lab-app`) and built on the same code and design system.
 

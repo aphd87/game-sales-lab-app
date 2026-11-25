@@ -14,6 +14,10 @@
   `streamlit run` health check.
 - `wip/` removed; `requirements.txt` added; README has deploy notes.
 
-## Still to do (needs the account owner)
-- **Deploy** on Streamlit Cloud: new app -> this repo -> `app.py`. Optionally set `APP_PASSWORD` in Secrets.
+## Deployed
+- Live at https://game-sales-lab.streamlit.app (Streamlit Community Cloud, branch `main`, `app.py`), 2026-11-25.
+  The deploy form defaults to branch `master` and `streamlit_app.py`; both must be changed for this repo.
+
+## Still to do
+- Optional: set `APP_PASSWORD` in the app's Settings > Secrets if the class should log in (currently open).
 - Not load-tested with a full class yet (the Box Office Lab's caching patterns are all in place).
