@@ -212,10 +212,12 @@ section[data-testid="stSidebar"] a {{ text-decoration: none; color: {INK}; }}
 .takeaway {{ border-left: 3px solid {BLUE}; background: #f5f9ff; padding: .75rem 1rem; margin: .4rem 0 1rem;
              color: {INK}; border-radius: 0 4px 4px 0; }}
 .takeaway b {{ color: {BLUE}; }}
+/* No data downloads: hide the "Download as CSV" button in every table's hover toolbar */
+button[aria-label="Download as CSV"], [data-testid="stElementToolbarButton"]:has(button[aria-label="Download as CSV"]) {{
+    display: none !important; }}
 </style>""", unsafe_allow_html=True)
 # st.dataframe takes width="stretch" from Streamlit 1.46; older versions (e.g. a local 1.45) need use_container_width
 _NEW_WIDTH = tuple(int(x) for x in st.__version__.split(".")[:2]) >= (1, 46)
-_LAZY_DOWNLOAD = tuple(int(x) for x in st.__version__.split(".")[:2]) >= (1, 67)   # download_button(data=callable)
 
 
 def _stretch(fn):
@@ -535,18 +537,6 @@ def heatmap(d, x, y, x_order, y_order, legend_title, fmt_str, y_color=None, coun
         text=alt.Text("Value:Q", format=fmt_str),
         color=alt.condition(f"datum.Value > {cut}", alt.value("white"), alt.value(INK)))
     return (rect + text).properties(height=34 * len(y_order) + 24)
-
-
-CSV_COLS = {"title": "Title", "platform": "Platform", "family": "Platform family", "year": "Year",
-            "release": "Release date", "genre": "Genre", "genre_raw": "VGChartz genre", "publisher": "Publisher label",
-            "pub": "Publisher group", "developer": "Developer", "kind": "Original / follow-up", "series": "Series",
-            "entry": "Entry number", "critic_score": "Critic score (0-10)", "na_sales": "North America (M units)",
-            "eu_sales": "Europe (M units)", "jp_sales": "Japan (M units)", "other_sales": "Rest of world (M units)",
-            "total_sales": "Total (M units)", "source": "Source"}
-
-
-def csv_bytes(v):
-    return v[list(CSV_COLS)].rename(columns=CSV_COLS).to_csv(index=False).encode("utf-8")
 
 
 # --- Header -------------------------------------------------------------------------------------------------------
@@ -1253,7 +1243,7 @@ def predict_section():
 @st.fragment
 def database_section():
     section("Games", "Game Database",
-            "**How it works:** filter the games, sort any column by clicking its header, and download what you see.")
+            "**How it works:** filter the games and sort any column by clicking its header.")
     c1, c2, c3 = st.columns(3)
     query = c1.text_input("Search title, developer or publisher", placeholder="e.g. Zelda, Rockstar, Ubisoft")
     fams = c2.multiselect("Platform family", FAMILY_ORDER, placeholder="All platforms")
@@ -1291,9 +1281,6 @@ def database_section():
         "other_sales": st.column_config.NumberColumn("Rest of world (M)", format="%.2f"),
         "units": st.column_config.NumberColumn("Units (M)", format="%.2f")})
     st.caption(f"*{len(v):,} of {len(GAMES):,} games match. Source: VGChartz. " + NOTE[4] + " " + NOTE[1] + "*")
-    st.download_button(f"⬇ Download these {len(v):,} games (CSV)",
-                       (lambda: csv_bytes(v)) if _LAZY_DOWNLOAD else csv_bytes(v), "game_sales_lab_games.csv",
-                       "text/csv", on_click="ignore")
 
 
 # --- Sidebar: menu + glossary ---------------------------------------------------------------------------------------
