@@ -165,7 +165,9 @@ def steam(look, igdb):
                               "reviews": (r.positive or 0) + (r.negative or 0), "positive": r.positive,
                               "price": r.price, "developer": r.developer, "publisher": r.publisher}
     s = pd.DataFrame(rows.values())
-    s = s[s["release_year"].fillna(0) >= 2018].copy()
+    # Released games only: 2018 through this year, with at least one Steam review (drops announced, unreleased games)
+    this_year = pd.Timestamp.now().year
+    s = s[s["release_year"].fillna(0).between(2018, this_year) & (s["reviews"].fillna(0) > 0)].copy()
     by_id = igdb.drop_duplicates("igdb_id").set_index("igdb_id", drop=False)
     ig = [igdb_cols(by_id.loc[i] if pd.notna(i) and i in by_id.index else None) for i in s["igdb_id"]]
     s = pd.concat([s.reset_index(drop=True), pd.DataFrame(ig).drop(columns="igdb_id")], axis=1)

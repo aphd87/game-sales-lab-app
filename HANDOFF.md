@@ -10,8 +10,8 @@
   Activision's 43M for Black Ops III) and what no source counts (revenue, subscriptions, in-game spending).
 - 3.2 shows publisher-reported totals beside VGChartz bars and adds post-2018 series games.
 - 14 Econometrics: franchise decay FE, Japan front-loading, concentration/HHI, hedonic FE, launch month FE.
-- Steam layer: steam_details.py looks up 8,000 more games at SteamSpy's 1/second limit; rerun build_extended.py
-  when it finishes, then push.
+- Steam layer done: 8,000 IGDB-linked games looked up on SteamSpy; data/steam.json keeps 5,928 released games
+  (2018 through the current year, at least one Steam review), all with covers.
 
 
 ## Done and pushed
