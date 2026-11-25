@@ -46,11 +46,11 @@ vs. digital, worldwide vs. one country), so they should be kept as separate laye
 |---|---|---|---|---|
 | Nintendo IR, Top Selling Title Sales Units | Top 10 Nintendo titles per platform (Switch, Switch 2, Wii U, 3DS), worldwide life-to-date, digital included, quarterly | Official | Free | https://www.nintendo.co.jp/ir/en/finance/software/index.html |
 | Capcom IR, Platinum Titles | Every Capcom title over 1M units (~125), digital included, quarterly | Official | Free | https://www.capcom.co.jp/ir/english/finance/million.html |
-| Bandai Namco fact books | Franchise-level cumulative units | Official | Free (PDF) | https://www.bandainamco.co.jp/en/ir/library/ |
+| Bandai Namco fact books | Franchise-level cumulative units | Official | Free (PDF) | https://www.bandainamco.co.jp/en/ir/library/assets/pdf/2024/factbook2024_en.pdf |
 | Other publisher IR (Sega, Square Enix, Sony, Take-Two, Koei Tecmo) | Occasional headline titles only | Official, patchy | Free | Each company's investor relations site |
-| Famitsu weekly charts (Japan), republished by Gematsu | Top 30 physical titles per week with lifetime totals | Industry tracking estimate | Free to read | https://www.gematsu.com/tag/famitsu-sales |
+| Famitsu weekly charts (Japan), republished by Gematsu | Top 30 physical titles per week with lifetime totals | Industry tracking estimate | Free to read | https://www.gematsu.com (weekly "Famitsu Sales" posts, e.g. https://www.gematsu.com/2026/11/famitsu-sales-10-26-26-11-1-26) |
 | SteamSpy | Estimated owner ranges for Steam (PC) games | Rough estimate; weak for small games | Free | https://steamspy.com |
-| Gamalytic / VG Insights | Steam sales estimates | Estimate (vendor reports ~77% of games within 30%) | Paid | https://gamalytic.com, https://vginsights.com |
+| Gamalytic / VG Insights | Steam sales estimates | Estimate (vendor reports ~77% of games within 30%) | Paid | https://gamalytic.com, https://vginsights.com (acquired by Sensor Tower, 2025) |
 | Circana (formerly NPD) | US physical + digital sales, the industry standard (some publishers no longer share digital) | Best for the US | Paid license | https://www.circana.com/industries/video-games |
 | Kaggle, "Video Game Sales Data from VGChartz.com" (patkle, Feb 2023) | Later VGChartz scrape with a "shipped" column; post-2018 coverage not yet checked | Same as VGChartz | Free | https://www.kaggle.com/datasets/patkle/video-game-sales-data-from-vgchartzcom |
 
