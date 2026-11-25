@@ -40,7 +40,7 @@ FIELDS = ",".join([
     "involved_companies.company.name", "involved_companies.developer", "involved_companies.publisher",
     "age_ratings.organization.name", "age_ratings.rating_category.rating",
     "rating", "rating_count", "aggregated_rating", "aggregated_rating_count", "total_rating", "total_rating_count",
-    "hypes", "url",
+    "hypes", "url", "cover.image_id",
 ])
 
 # Our platform codes (VGChartz) -> IGDB platform abbreviations
@@ -73,7 +73,14 @@ def token():
 def download_all():
     cid, tok = token()
     headers = {"Client-ID": cid, "Authorization": f"Bearer {tok}"}
-    rows, last_id = [], 0
+    # Resume from a partial download if one exists (saved every 20 pages)
+    part = FULL.with_suffix(".partial.gz")
+    rows = []
+    if part.exists():
+        with gzip.open(part, "rt", encoding="utf-8") as f:
+            rows = json.load(f)
+    last_id = rows[-1]["id"] if rows else 0
+    pages = 0
     while True:
         body = f"fields {FIELDS}; where id > {last_id}; sort id asc; limit 500;"
         for attempt in range(5):
@@ -88,11 +95,15 @@ def download_all():
             break
         rows.extend(page)
         last_id = page[-1]["id"]
-        print(f"\r{len(rows):,} IGDB games", end="", flush=True)
+        pages += 1
+        if pages % 20 == 0:
+            print(f"{len(rows):,} IGDB games", flush=True)
+            with gzip.open(part, "wt", encoding="utf-8") as f:
+                json.dump(rows, f)
         time.sleep(0.3)                       # stay under 4 requests/second
-    print()
     with gzip.open(FULL, "wt", encoding="utf-8") as f:
         json.dump(rows, f)
+    part.unlink(missing_ok=True)
     return rows
 
 
@@ -123,6 +134,7 @@ def flatten(g):
         "user_rating": g.get("rating"), "user_rating_count": g.get("rating_count"),
         "critic_rating": g.get("aggregated_rating"), "critic_rating_count": g.get("aggregated_rating_count"),
         "hypes": g.get("hypes"),
+        "cover_id": (g.get("cover") or {}).get("image_id"),
     }
 
 

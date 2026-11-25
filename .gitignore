@@ -11,3 +11,6 @@ __pycache__/
 
 # IGDB full download (large; rebuilt by enrich/igdb_fetch.py)
 raw/igdb_full.json.gz
+raw/igdb_full.partial.gz
+raw/steamspy_pages/
+raw/famitsu_posts.json

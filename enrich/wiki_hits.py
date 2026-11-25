@@ -52,7 +52,10 @@ def fetch(title):
 
 def clean(s):
     """Drop footnote markers like [a] or [12] and extra spaces."""
-    return re.sub(r"\s+", " ", re.sub(r"\[[^\]]*\]", "", str(s))).strip()
+    s = re.sub(r"\[[^\]]*\]", "", str(s))
+    s = re.sub(r"[†‡*§¶]", "", s)          # dagger and other footnote symbols
+    s = re.sub(r"\s+", " ", s).strip(" ;")
+    return "" if s.lower() == "nan" else s
 
 
 def copies(s):
@@ -76,7 +79,8 @@ def year_of(s):
 
 def pick(cols, *names):
     for c in cols:
-        if any(n in str(c).lower() for n in names):
+        label = " ".join(str(c).lower().replace(";", " ").split())   # headers can contain line breaks
+        if any(n in label for n in names):
             return c
     return None
 
@@ -85,7 +89,9 @@ def main():
     rows = []
     for title, platform in PAGES.items():
         p = fetch(title)
-        tabs = pd.read_html(io.StringIO(p["text"]))
+        # Line breaks inside a cell separate list items (several publishers): keep them apart
+        html = re.sub(r"<br\s*/?>", "; ", p["text"])
+        tabs = pd.read_html(io.StringIO(html))
         main = next(t for t in tabs if len(t) >= 10 and pick(t.columns, "copies sold", "sales (millions)"))
         c = main.columns
         name, sold = pick(c, "title", "game"), pick(c, "copies sold", "sales (millions)")
@@ -100,6 +106,7 @@ def main():
                 "title": clean(r[name]), "platform": platform, "units_m": units,
                 "units_text": clean(r[sold]), "lower_bound": int("+" in str(r[sold]) or "over" in str(r[sold]).lower()),
                 "as_of": clean(r[asof]) if asof is not None else None,
+                "as_of_year": year_of(r[asof]) if asof is not None else None,
                 "release_year": year_of(r[rel]) if rel is not None else (year_of(r[pick(c, "release year")])
                                                                           if pick(c, "release year") else None),
                 "platforms_listed": clean(r[plat]) if plat is not None else None,
