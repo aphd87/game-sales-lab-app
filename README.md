@@ -17,6 +17,43 @@ Lab (`aphd87/box-office-lab-app`) and built on the same code and design system.
 Streamlit Cloud: point a new app at this repo's `app.py`. `data/` ships in the repo, so no data download or token is needed. To make the class log in, set `APP_PASSWORD` under the app's Settings > Secrets
 (`APP_PASSWORD = "..."`); without it the app is open. After pushing changes, reboot the app (file watching is off in `.streamlit/config.toml` to save CPU under classroom load).
 
+## Sources
+
+### Data used in the app
+| Source | What it provides | Link |
+|---|---|---|
+| VGChartz | The original publisher of every sales estimate in this app (game-level unit sales by region, release dates, critic scores) | https://www.vgchartz.com |
+| Kaggle, "Video Game Sales 2024" (asaniczka) | `raw/vgchartz-2024.csv`: 2024 scrape of VGChartz, 64,016 game-platform rows | https://www.kaggle.com/datasets/asaniczka/video-game-sales-2024 |
+| Kaggle, "Video Game Sales" (gregorut, 2016) | `raw/vgsales-2016.csv`: 2016 scrape of VGChartz, 16,598 rows; fills in Nintendo first-party titles | https://www.kaggle.com/datasets/gregorut/videogamesales |
+
+Kaggle only hosts these files; the numbers are VGChartz's estimates (see *Assumptions and limits*). Spot checks
+against the original VGChartz pages are the way to verify a figure.
+
+### Code and tools
+| Source | Used for | Link |
+|---|---|---|
+| Behind the Box Office Lab | App structure, design system, shared chart cache | https://github.com/aphd87/box-office-lab-app |
+| Streamlit | App framework and hosting (Community Cloud) | https://streamlit.io |
+| Vega-Altair | Charts | https://altair-viz.github.io |
+| scikit-learn | Prediction models in `build_data.py` | https://scikit-learn.org |
+
+### Candidate sources for 2018–2025 (not yet in the app)
+VGChartz stopped publishing most software estimates after 2018. No single free source replaces it; these are the
+options reviewed on 2026-11-25, most trustworthy first. They measure different things (shipped vs. sold, physical
+vs. digital, worldwide vs. one country), so they should be kept as separate layers, never added together.
+
+| Source | Coverage | Trust | Cost | Link |
+|---|---|---|---|---|
+| Nintendo IR, Top Selling Title Sales Units | Top 10 Nintendo titles per platform (Switch, Switch 2, Wii U, 3DS), worldwide life-to-date, digital included, quarterly | Official | Free | https://www.nintendo.co.jp/ir/en/finance/software/index.html |
+| Capcom IR, Platinum Titles | Every Capcom title over 1M units (~125), digital included, quarterly | Official | Free | https://www.capcom.co.jp/ir/english/finance/million.html |
+| Bandai Namco fact books | Franchise-level cumulative units | Official | Free (PDF) | https://www.bandainamco.co.jp/en/ir/library/ |
+| Other publisher IR (Sega, Square Enix, Sony, Take-Two, Koei Tecmo) | Occasional headline titles only | Official, patchy | Free | Each company's investor relations site |
+| Famitsu weekly charts (Japan), republished by Gematsu | Top 30 physical titles per week with lifetime totals | Industry tracking estimate | Free to read | https://www.gematsu.com/tag/famitsu-sales |
+| SteamSpy | Estimated owner ranges for Steam (PC) games | Rough estimate; weak for small games | Free | https://steamspy.com |
+| Gamalytic / VG Insights | Steam sales estimates | Estimate (vendor reports ~77% of games within 30%) | Paid | https://gamalytic.com, https://vginsights.com |
+| Circana (formerly NPD) | US physical + digital sales, the industry standard (some publishers no longer share digital) | Best for the US | Paid license | https://www.circana.com/industries/video-games |
+| Kaggle, "Video Game Sales Data from VGChartz.com" (patkle, Feb 2023) | Later VGChartz scrape with a "shipped" column; post-2018 coverage not yet checked | Same as VGChartz | Free | https://www.kaggle.com/datasets/patkle/video-game-sales-data-from-vgchartzcom |
+
 ## Data notes
 Units are lifetime sales in millions, as estimated by VGChartz: mostly boxed retail, so digital sales are largely
 missing and years after about 2015 are undercounted. Coverage stops in 2018.
