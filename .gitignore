@@ -8,3 +8,6 @@ __pycache__/
 *token*.txt
 *API Key*
 .env
+
+# IGDB full download (large; rebuilt by enrich/igdb_fetch.py)
+raw/igdb_full.json.gz
