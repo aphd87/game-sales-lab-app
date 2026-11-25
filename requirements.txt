@@ -1,0 +1,5 @@
+# What the deployed app needs. build_data.py also needs scikit-learn, but only run it locally.
+streamlit>=1.59
+pandas>=2.2
+numpy>=1.26
+altair>=5.3

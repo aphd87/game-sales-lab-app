@@ -9,6 +9,11 @@ Lab (`aphd87/box-office-lab-app`) and built on the same code and design system.
 - `build_data.py`: merges the two files and writes `data/` (games, model scores, pitch grid). Run locally: `python build_data.py`.
 - `data/`: the built data the app reads.
 - `app.py`: the Streamlit app. Run locally: `streamlit run app.py`.
+- `requirements.txt`: what the deployed app needs (build_data.py also needs scikit-learn; run it locally).
+
+## Deploy
+Streamlit Cloud: point a new app at this repo's `app.py`. `data/` ships in the repo, so no data download or token is needed. To make the class log in, set `APP_PASSWORD` under the app's Settings > Secrets
+(`APP_PASSWORD = "..."`); without it the app is open. After pushing changes, reboot the app (file watching is off in `.streamlit/config.toml` to save CPU under classroom load).
 
 ## Data notes
 Units are lifetime sales in millions, as estimated by VGChartz: mostly boxed retail, so digital sales are largely
