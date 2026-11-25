@@ -14,3 +14,4 @@ raw/igdb_full.json.gz
 raw/igdb_full.partial.gz
 raw/steamspy_pages/
 raw/famitsu_posts.json
+raw/steam_details.jsonl

@@ -9,6 +9,18 @@ Lab (`aphd87/box-office-lab-app`) and built on the same code and design system.
 - `raw/vgchartz-2024.csv`: VGChartz scrape (2024), 64,016 game-platform rows with release dates, critic scores, developers.
 - `raw/vgsales-2016.csv`: the 2016 VGChartz scrape (16,598 rows). Fills in Nintendo first-party titles missing from the 2024 file.
 - `build_data.py`: merges the two files and writes `data/` (games, model scores, pitch grid). Run locally: `python build_data.py`.
+- `gamelab_common.py`: shared lookups (platforms, genres, publisher groups, series keys) used by both build steps.
+- `enrich/`: collectors and the second build step for the data beyond VGChartz (run locally, in this order):
+  - `igdb_fetch.py`: downloads IGDB (cover art, age ratings, game modes, player ratings) and matches it to the
+    VGChartz titles (`raw/igdb_matched.csv`; 77% of titles, 89% of copies). Needs a free Twitch developer key in
+    `~/.igdb/credentials.json`, never committed.
+  - `wiki_hits.py`: publisher-reported sales from Wikipedia's best-seller lists (`raw/wiki_hits.csv`, 1,216 rows,
+    each with a permanent link to the page version used).
+  - `famitsu_fetch.py`: Famitsu's weekly Japan charts via Gematsu's public WordPress API, 2019–2026, with typo'd
+    totals removed and spelling variants merged (`raw/famitsu_weekly.csv`, `raw/famitsu_lifetime.csv`).
+  - `steamspy_fetch.py`, `steam_details.py`: SteamSpy estimates for Steam games released 2018 on.
+  - `fetch_logos.py`: public-domain console-maker and publisher logos from Wikimedia Commons (`data/logos.json`).
+  - `build_extended.py`: joins all of the above into `data/attributes.json`, `hits.json`, `japan.json`, `steam.json`.
 - `data/`: the built data the app reads.
 - `app.py`: the Streamlit app. Run locally: `streamlit run app.py`.
 - `requirements.txt`: what the deployed app needs (build_data.py also needs scikit-learn; run it locally).
@@ -28,6 +40,18 @@ Streamlit Cloud: point a new app at this repo's `app.py`. `data/` ships in the r
 
 Kaggle only hosts these files; the numbers are VGChartz's estimates (see *Assumptions and limits*). Spot checks
 against the original VGChartz pages are the way to verify a figure.
+
+### Data beyond 2018 and game details (enrich/)
+| Source | What it provides | Link |
+|---|---|---|
+| Wikipedia best-selling games lists (per console, plus all-platform) | Publisher-reported lifetime sales of hit games, downloads included, each with a citation | https://en.wikipedia.org/wiki/List_of_best-selling_video_games |
+| Famitsu weekly charts, published by Gematsu | Japan boxed-copy sales, weekly top 30 with lifetime totals, 2019–2026 | https://www.gematsu.com |
+| SteamSpy | Steam owner ranges and review counts | https://steamspy.com |
+| IGDB (Twitch) | Cover art, ESRB ratings, game modes, perspectives, player ratings, Steam IDs | https://www.igdb.com |
+| Wikimedia Commons | Public-domain logos of console makers and publishers (trademarks of their owners) | https://commons.wikimedia.org |
+
+These layers measure different things (reported hits, Japan stores, Steam estimates, VGChartz retail estimates), so
+the app keeps each in its own charts and never adds them together.
 
 ### Code and tools
 | Source | Used for | Link |

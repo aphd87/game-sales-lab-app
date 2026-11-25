@@ -35,7 +35,8 @@ def main():
                 if r.ok and r.text.strip().startswith("{"):
                     break
                 time.sleep(70)
-            data = r.json()
+            # Past the last page SteamSpy returns an empty or non-JSON reply: that is the end of the list
+            data = r.json() if r.text.strip().startswith("{") else {}
             f.write_text(json.dumps(data), encoding="utf-8")
             print(f"page {page}: {len(data)} apps", flush=True)
             if not data:

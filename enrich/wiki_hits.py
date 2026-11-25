@@ -35,6 +35,15 @@ PAGES = {
     "List of best-selling Wii U video games": "WiiU",
     "List of best-selling PlayStation 3 video games": "PS3",
     "List of best-selling Xbox 360 video games": "X360",
+    "List of best-selling Wii video games": "Wii",
+    "List of best-selling Nintendo DS video games": "DS",
+    "List of best-selling PlayStation 2 video games": "PS2",
+    "List of best-selling PlayStation Portable video games": "PSP",
+    "List of best-selling PlayStation video games": "PS",
+    "List of best-selling Xbox games": "XB",
+    "List of best-selling GameCube video games": "GC",
+    "List of best-selling Game Boy Advance video games": "GBA",
+    "List of best-selling Nintendo 64 video games": "N64",
     "List of best-selling video games": "Multi",
 }
 
@@ -92,7 +101,11 @@ def main():
         # Line breaks inside a cell separate list items (several publishers): keep them apart
         html = re.sub(r"<br\s*/?>", "; ", p["text"])
         tabs = pd.read_html(io.StringIO(html))
-        main = next(t for t in tabs if len(t) >= 10 and pick(t.columns, "copies sold", "sales (millions)"))
+        main = next((t for t in tabs if len(t) >= 10 and pick(t.columns, "copies sold", "sales (millions)")), None)
+        if main is None:                  # a page laid out differently: skip it rather than guess
+            print(f"skip   no sales table found in {title}")
+            time.sleep(2)
+            continue
         c = main.columns
         name, sold = pick(c, "title", "game"), pick(c, "copies sold", "sales (millions)")
         asof, rel = pick(c, "as of"), pick(c, "release")

@@ -20,7 +20,7 @@ import re
 import sys
 import time
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -31,6 +31,7 @@ CRED = Path.home() / ".igdb" / "credentials.json"
 FULL = HERE / "raw" / "igdb_full.json.gz"
 OUT = HERE / "raw" / "igdb_matched.csv"
 API = "https://api.igdb.com/v4"
+EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 FIELDS = ",".join([
     "name", "first_release_date", "game_type.type", "parent_game", "version_parent",
@@ -118,7 +119,7 @@ def flatten(g):
     ts = g.get("first_release_date")
     return {
         "igdb_id": g["id"], "igdb_name": g.get("name"), "igdb_url": g.get("url"),
-        "igdb_year": datetime.fromtimestamp(ts, timezone.utc).year if ts else None,
+        "igdb_year": (EPOCH + timedelta(seconds=ts)).year if ts else None,   # works before 1970 too (Windows)
         "game_type": (g.get("game_type") or {}).get("type"),
         "is_port_or_version": int(bool(g.get("parent_game") or g.get("version_parent"))),
         "igdb_genres": names(g.get("genres")), "themes": names(g.get("themes")),

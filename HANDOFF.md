@@ -1,4 +1,14 @@
-# Handoff: where the Game Sales Lab stands (2026-11-25)
+# Handoff: where the Game Sales Lab stands (2026-11-25, evening)
+
+## Redesign and data beyond 2018 (2026-11-25)
+- Consulting-style design: navy/blue/gray palette (CVD-checked), serif headings, numbered exhibits with takeaway
+  titles, a Source/Note line under every exhibit, KPI cards with a plain-language line under each number, every data
+  point labeled, an insight under every table, company logos as row labels and in keys, IGDB cover art.
+- 13 sections. New: 7 Critics & Players (adds player ratings, ESRB, multiplayer), 8 Blockbusters Since 2019
+  (publisher-reported hits, incl. a 2001–2026 by-year exhibit), 9 Japan Since 2019 (Famitsu), 10 PC & Steam.
+- Steam layer: steam_details.py looks up 8,000 more games at SteamSpy's 1/second limit; rerun build_extended.py
+  when it finishes, then push.
+
 
 ## Done and pushed
 - `raw/`, `build_data.py`, `data/`: merged VGChartz data (19,113 game-platform rows), model scores, pitch grid.
